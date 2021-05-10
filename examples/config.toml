@@ -1,0 +1,13 @@
+["hot_singles.jpg"] # route name
+image = "img/hot_women.png" # name of file on disk, relative to working directory
+image_width = 1280 # width of image in pixels
+image_height = 720 # height of image in pixels
+frames = 1 # number of frames in the image (typically 1). Used for animations.
+text_align = "Center" # Text alignment. Must be Left or Center.
+text_x = 640 # X coordinate of either the left or center of the text, depeneding on text_align
+text_y = 180 # Y coordinate of the top of the text
+text_color = [240, 255, 255, 255] # RGBA color of the text
+text_scale = 64.0 # size of the text, in pixels
+text_case = "Default" # case of the text, must be Default or Upper
+output_format = "Jpeg" # output format of the image, must be Jpeg or Png
+text_prefix = "Singles in " # Text prefix that will go before the location

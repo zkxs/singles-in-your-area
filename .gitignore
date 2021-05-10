@@ -1,0 +1,12 @@
+# Build artifacts
+/target
+
+# IDE: IntelliJ
+*.iml
+.idea/
+
+# input files
+/GeoLite2-City.mmdb
+/build.sh
+/img/
+/config.toml
