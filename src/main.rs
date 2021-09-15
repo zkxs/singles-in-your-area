@@ -11,7 +11,7 @@ use std::sync::Arc;
 use chrono::{SecondsFormat, Utc};
 use imageproc::drawing::draw_text_mut;
 use maxminddb::{geoip2, Reader as MaxMindReader};
-use rusttype::{Font, point, PositionedGlyph, Rect, Scale};
+use rusttype::{Font, point, Scale};
 use warp::Filter;
 use warp::http::{Response, StatusCode};
 
@@ -19,6 +19,7 @@ use crate::advert::*;
 
 mod advert;
 
+/// fallback fake location for when GeoIP lookup fails
 const DEFAULT_CITY: &str = "your area";
 
 type GeoIp = MaxMindReader<Vec<u8>>;
@@ -40,6 +41,7 @@ async fn main() {
 
     let server_address: SocketAddr = ([0, 0, 0, 0], 3035).into();
 
+    // load the config file and referenced images
     let config = fs::read_to_string("config.toml").expect("failed to open config.toml");
     let config: HashMap<String, AdvertDefinition> = toml::from_str(&config).expect("failed to deserialize config.toml");
     let config: Config = config.into_iter()
@@ -49,10 +51,12 @@ async fn main() {
 
     println!("[{}] Done loading images", iso_string());
 
+    // simple version endpoint at web root
     let info = warp::path::end()
         .and(warp::get())
         .map(|| format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")));
 
+    // the advert endpoint, hosted at /ads/<image_name>
     let adverts = warp::path!("ads" / String)
         .and(warp::get())
         .and(with_state(config.clone()))
@@ -68,33 +72,41 @@ async fn main() {
         .await;
 }
 
+/// helper function making it easier to pass state warp filters
 fn with_state<T: Clone + Send>(state: T) -> impl Filter<Extract=(T, ), Error=std::convert::Infallible> + Clone {
     warp::any().map(move || state.clone())
 }
 
+/// current time as an ISO-8601 string
 fn iso_string() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-async fn fake_advert_handler(path: String, config: Arc<Config>, socket_addr: Option<SocketAddr>) -> Result<impl warp::Reply, warp::Rejection> {
-    match (*config).get(&path) {
+/// handles a request to the /ad/<image_name> endpoint
+async fn fake_advert_handler(image_name: String, config: Arc<Config>, socket_addr: Option<SocketAddr>) -> Result<impl warp::Reply, warp::Rejection> {
+    match (*config).get(&image_name) {
         Some(advert) => {
-            let mime_type = advert.output_format.mime_type();
 
+            // attempt to generate the image
             let image = socket_addr
                 .ok_or("no remote address".to_string())
-                .and_then(|socket_addr| ip_to_image(advert, socket_addr.ip()).map_err(|e| format!("Error encoding PNG: {:?}", e)));
+                .and_then(|socket_addr| {
+                    render_location_to_image(advert, get_city_from_ip(socket_addr.ip()))
+                        .map_err(|e| format!("Error encoding PNG: {:?}", e))
+                });
 
             match image {
                 Ok(image) => {
+                    // everything worked!
                     Ok(
                         Response::builder()
                             .status(StatusCode::OK)
-                            .header("Content-Type", mime_type)
+                            .header("Content-Type", advert.output_format.mime_type())
                             .body(image)
                     )
                 }
                 Err(e) => {
+                    // something went wrong with the the image render
                     eprintln!("[{}] {}", iso_string(), e);
                     Ok(
                         Response::builder()
@@ -106,7 +118,8 @@ async fn fake_advert_handler(path: String, config: Arc<Config>, socket_addr: Opt
             }
         }
         None => {
-            eprintln!("[{}] 404: {}", iso_string(), path);
+            // someone requested an image_name that isn't in our config file
+            eprintln!("[{}] 404: {}", iso_string(), image_name);
             Ok(
                 Response::builder()
                     .status(StatusCode::NOT_FOUND)
@@ -117,7 +130,8 @@ async fn fake_advert_handler(path: String, config: Arc<Config>, socket_addr: Opt
     }
 }
 
-fn ip_to_location(addr: IpAddr) -> String {
+/// get an approximate city from an IP address, falling back to a default on failure
+fn get_city_from_ip(addr: IpAddr) -> String {
     (*GEOIP).lookup(addr).ok()
         .and_then(|city: geoip2::City| city.city)
         .and_then(|city| city.names)
@@ -126,37 +140,36 @@ fn ip_to_location(addr: IpAddr) -> String {
         .unwrap_or(DEFAULT_CITY.to_owned())
 }
 
-fn ip_to_image(advert: &Advert, addr: IpAddr) -> Result<Vec<u8>, String> {
+/// render some custom text over an image, where that custom text contains a location (e.g. "singles near New York City")
+fn render_location_to_image(advert: &Advert, location: String) -> Result<Vec<u8>, String> {
+    // we need a fresh copy of the image to render to
     let mut image = advert.image.clone();
+
+    // grab a bunch of fields out of the config just for ease of use later
     let image_width = advert.image_width;
     let image_height = advert.image_height;
-    let frames = advert.frames;
-    let text_align = &advert.text_align;
-    let text_case = &advert.text_case;
     let text_x = advert.text_x;
     let text_y = advert.text_y;
-    let text_color = advert.text_color;
     let text_scale = advert.text_scale;
-    let text_prefix = advert.text_prefix.as_str();
-    let output_format = advert.output_format.format();
 
-    let location = ip_to_location(addr);
-
-    let location = match text_case {
+    // handle the desired text case
+    let location = match advert.text_case {
         Case::Default => location,
         Case::Upper => location.to_uppercase()
     };
 
-    let text = format!("{}{}", text_prefix, location);
-
+    // figure out how wide the text is
+    let text = format!("{}{}", advert.text_prefix, location);
     let (width, _text_height) = text_size(text_scale, &*FONT, &text);
     let text_width = u32::try_from(width).map_err(|e| format!("error calculating text width: {:?}", e))?;
 
-    let x = match text_align {
+    // calculate x coordinate if we're centering the text
+    let x = match advert.text_align {
         Align::Left => text_x,
         Align::Center => text_x.checked_sub(text_width / 2).unwrap_or(0),
     };
 
+    // some special logging for the edge case where the text renders off the side of the image
     if x + text_width > image_width {
         let overflow = (x + text_width) - image_width;
         println!("[{}] hit, overflowed by {}px", iso_string(), overflow);
@@ -164,38 +177,29 @@ fn ip_to_image(advert: &Advert, addr: IpAddr) -> Result<Vec<u8>, String> {
         println!("[{}] hit", iso_string());
     }
 
-    for frame in 0..frames {
+    // render the text
+    for frame in 0..advert.frames {
         let y = text_y + frame * image_height;
-        draw_text_mut(&mut image, text_color, x, y, text_scale, &*FONT, &text);
+        draw_text_mut(&mut image, advert.text_color, x, y, text_scale, &*FONT, &text);
     }
 
+    // encode the image
     let mut buffer: Vec<u8> = Vec::new();
-    image.write_to(&mut buffer, output_format).expect("failed to encode output image");
+    image.write_to(&mut buffer, advert.output_format.format())
+        .map_err(|e| format!("failed to encode output image: {:?}", e))?;
     Ok(buffer)
 }
 
-fn layout_glyphs(
-    scale: Scale,
-    font: &Font,
-    text: &str,
-    mut f: impl FnMut(PositionedGlyph, Rect<i32>),
-) -> (i32, i32) {
+/// Get the width and height of the given text, rendered with the given font and scale.
+/// Note that this function *does not* support newlines, you must do this manually.
+fn text_size(scale: Scale, font: &Font, text: &str) -> (i32, i32) {
     let v_metrics = font.v_metrics(scale);
-
     let (mut w, mut h) = (0, 0);
-
     for g in font.layout(text, scale, point(0.0, v_metrics.ascent)) {
         if let Some(bb) = g.pixel_bounding_box() {
             w = max(w, bb.max.x);
             h = max(h, bb.max.y);
-            f(g, bb);
         }
     }
-
     (w, h)
-}
-
-/// Get the width and height of the given text, rendered with the given font and scale. Note that this function *does not* support newlines, you must do this manually.
-pub fn text_size(scale: Scale, font: &Font, text: &str) -> (i32, i32) {
-    layout_glyphs(scale, font, text, |_, _| {})
 }

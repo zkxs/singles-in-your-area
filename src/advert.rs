@@ -3,33 +3,37 @@ use image::io::Reader as ImageReader;
 use rusttype::Scale;
 use serde::Deserialize;
 
+/// simple struct that maps to config file entries
 #[derive(Deserialize)]
 pub struct AdvertDefinition {
     pub image: String,
     pub image_width: u32,
     pub image_height: u32,
+    /// number of frames, used for animation sprite sheets (currently only vertical stacking is supported)
     pub frames: u32,
-    /// true to center, false to left-align
     pub text_align: Align,
-    /// left OR center of text
+    /// left OR center of text, depending on text_align
     pub text_x: u32,
     /// top of text
     pub text_y: u32,
+    /// RGBA values
     pub text_color: [u8; 4],
     pub text_scale: f32,
     pub text_case: Case,
     pub output_format: ImageOutput,
+    /// prefix for GeoIP location
     pub text_prefix: String,
 }
 
+/// fancier struct that we get after a bit of config post-processing
 pub struct Advert {
     pub image: DynamicImage,
     pub image_width: u32,
     pub image_height: u32,
+    /// number of frames, used for animation sprite sheets (currently only vertical stacking is supported)
     pub frames: u32,
-    /// true to center, false to left-align
     pub text_align: Align,
-    /// left OR center of text
+    /// left OR center of text, depending on text_align
     pub text_x: u32,
     /// top of text
     pub text_y: u32,
@@ -37,10 +41,12 @@ pub struct Advert {
     pub text_scale: Scale,
     pub text_case: Case,
     pub output_format: ImageOutput,
+    /// prefix for GeoIP location
     pub text_prefix: String,
 }
 
 impl Advert {
+    /// load an Advert from its definition. Notably this loads a PNG image from disk into memory
     pub fn open(definition: AdvertDefinition) -> Advert {
         let mut reader = ImageReader::open(definition.image.clone())
             .expect(format!("failed to open image: {}", definition.image).as_str());
@@ -67,6 +73,7 @@ impl Advert {
     }
 }
 
+/// all the different output formats we support
 #[derive(Deserialize)]
 pub enum ImageOutput {
     Jpeg,
@@ -74,6 +81,7 @@ pub enum ImageOutput {
 }
 
 impl ImageOutput {
+    /// image "format": used by our image processing library
     pub fn format(&self) -> ImageFormat {
         match &self {
             ImageOutput::Jpeg => ImageFormat::Jpeg,
@@ -81,6 +89,7 @@ impl ImageOutput {
         }
     }
 
+    /// image mime type: used by our web server
     pub fn mime_type(&self) -> &'static str {
         match &self {
             ImageOutput::Jpeg => "image/jpeg",
@@ -89,14 +98,18 @@ impl ImageOutput {
     }
 }
 
+/// supported text alignment options
 #[derive(Deserialize)]
 pub enum Align {
     Left,
     Center,
 }
 
+/// supported text case options
 #[derive(Deserialize)]
 pub enum Case {
+    /// the exact string the GeoIP lookup gives us
     Default,
+    /// forced uppercase
     Upper,
 }
