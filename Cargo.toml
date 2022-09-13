@@ -2,7 +2,7 @@
 name = "singles-in-your-area"
 version = "0.3.2"
 authors = ["Michael Ripley <zkxs00@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
