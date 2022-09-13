@@ -1,17 +1,16 @@
 #[macro_use]
 extern crate lazy_static;
 
-use std::cmp::max;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::fs;
+use std::io::Cursor;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use chrono::{SecondsFormat, Utc};
-use imageproc::drawing::draw_text_mut;
+use imageproc::drawing::{draw_text_mut, text_size};
 use maxminddb::{geoip2, Reader as MaxMindReader};
-use rusttype::{Font, point, Scale};
+use rusttype::Font;
 use warp::Filter;
 use warp::http::{Response, StatusCode};
 
@@ -89,7 +88,7 @@ async fn fake_advert_handler(image_name: String, config: Arc<Config>, socket_add
 
             // attempt to generate the image
             let image = socket_addr
-                .ok_or("no remote address".to_string())
+                .ok_or_else(|| "no remote address".to_string())
                 .and_then(|socket_addr| {
                     render_location_to_image(advert, get_city_from_ip(socket_addr.ip()))
                         .map_err(|e| format!("Error encoding PNG: {:?}", e))
@@ -135,9 +134,9 @@ fn get_city_from_ip(addr: IpAddr) -> String {
     (*GEOIP).lookup(addr).ok()
         .and_then(|city: geoip2::City| city.city)
         .and_then(|city| city.names)
-        .and_then(|names| names.iter().next().map(|(_k, v)| v.clone()))
+        .and_then(|names| names.iter().next().map(|(_k, v)| v.to_owned()))
         .map(|v| v.to_owned())
-        .unwrap_or(DEFAULT_CITY.to_owned())
+        .unwrap_or_else(|| DEFAULT_CITY.to_owned())
 }
 
 /// render some custom text over an image, where that custom text contains a location (e.g. "singles near New York City")
@@ -160,8 +159,7 @@ fn render_location_to_image(advert: &Advert, location: String) -> Result<Vec<u8>
 
     // figure out how wide the text is
     let text = format!("{}{}", advert.text_prefix, location);
-    let (width, _text_height) = text_size(text_scale, &*FONT, &text);
-    let text_width = u32::try_from(width).map_err(|e| format!("error calculating text width: {:?}", e))?;
+    let (text_width, _text_height) = text_size(text_scale, &*FONT, &text);
 
     // calculate x coordinate if we're centering the text
     let x = match advert.text_align {
@@ -185,21 +183,7 @@ fn render_location_to_image(advert: &Advert, location: String) -> Result<Vec<u8>
 
     // encode the image
     let mut buffer: Vec<u8> = Vec::new();
-    image.write_to(&mut buffer, advert.output_format.format())
+    image.write_to(&mut Cursor::new(&mut buffer), advert.output_format.format())
         .map_err(|e| format!("failed to encode output image: {:?}", e))?;
     Ok(buffer)
-}
-
-/// Get the width and height of the given text, rendered with the given font and scale.
-/// Note that this function *does not* support newlines, you must do this manually.
-fn text_size(scale: Scale, font: &Font, text: &str) -> (i32, i32) {
-    let v_metrics = font.v_metrics(scale);
-    let (mut w, mut h) = (0, 0);
-    for g in font.layout(text, scale, point(0.0, v_metrics.ascent)) {
-        if let Some(bb) = g.pixel_bounding_box() {
-            w = max(w, bb.max.x);
-            h = max(h, bb.max.y);
-        }
-    }
-    (w, h)
 }

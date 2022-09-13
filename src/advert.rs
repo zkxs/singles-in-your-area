@@ -2,6 +2,7 @@ use image::{DynamicImage, ImageFormat, Rgba};
 use image::io::Reader as ImageReader;
 use rusttype::Scale;
 use serde::Deserialize;
+use const_format::formatcp;
 
 /// simple struct that maps to config file entries
 #[derive(Deserialize)]
@@ -28,15 +29,15 @@ pub struct AdvertDefinition {
 /// fancier struct that we get after a bit of config post-processing
 pub struct Advert {
     pub image: DynamicImage,
-    pub image_width: u32,
-    pub image_height: u32,
+    pub image_width: i32,
+    pub image_height: i32,
     /// number of frames, used for animation sprite sheets (currently only vertical stacking is supported)
-    pub frames: u32,
+    pub frames: i32,
     pub text_align: Align,
     /// left OR center of text, depending on text_align
-    pub text_x: u32,
+    pub text_x: i32,
     /// top of text
-    pub text_y: u32,
+    pub text_y: i32,
     pub text_color: Rgba<u8>,
     pub text_scale: Scale,
     pub text_case: Case,
@@ -49,18 +50,18 @@ impl Advert {
     /// load an Advert from its definition. Notably this loads a PNG image from disk into memory
     pub fn open(definition: AdvertDefinition) -> Advert {
         let mut reader = ImageReader::open(definition.image.clone())
-            .expect(format!("failed to open image: {}", definition.image).as_str());
+            .unwrap_or_else(|e| panic!("failed to open image \"{}\": {:?}", definition.image, e));
         reader.set_format(ImageFormat::Png);
         let image = reader.decode().expect("failed to decode image");
 
         Advert {
             image,
-            image_width: definition.image_width,
-            image_height: definition.image_height,
-            frames: definition.frames,
+            image_width: i32::try_from(definition.image_width).expect(formatcp!("image_width must be less than {}", i32::MAX)),
+            image_height: i32::try_from(definition.image_height).expect(formatcp!("image_height must be less than {}", i32::MAX)),
+            frames: i32::try_from(definition.frames).expect(formatcp!("frames must be less than {}", i32::MAX)),
             text_align: definition.text_align,
-            text_x: definition.text_x,
-            text_y: definition.text_y,
+            text_x: i32::try_from(definition.text_x).expect(formatcp!("text_x must be less than {}", i32::MAX)),
+            text_y: i32::try_from(definition.text_y).expect(formatcp!("text_y must be less than {}", i32::MAX)),
             text_color: Rgba(definition.text_color),
             text_scale: Scale {
                 x: definition.text_scale,
