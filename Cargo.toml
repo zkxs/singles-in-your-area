@@ -17,4 +17,4 @@ maxminddb = "^0.23.0"
 lazy_static = "^1.4.0"
 serde = { version = "^1.0.0", features = ["derive"] }
 toml = "^0.5.8"
-const_format = "^0.2.26"
+const_format = "^0.2.28"
