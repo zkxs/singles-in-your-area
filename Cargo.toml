@@ -16,5 +16,5 @@ rusttype = "^0.9.2"
 maxminddb = "^0.23.0"
 lazy_static = "^1.4.0"
 serde = { version = "^1.0.0", features = ["derive"] }
-toml = "^0.5.8"
+toml = "^0.7.1"
 const_format = "^0.2.26"
