@@ -7,6 +7,7 @@
 
 # input files
 /GeoLite2-City.mmdb
-/build.sh
+/GeoLite2-City.mmdb.old
 /img/
 /config.toml
+/MAXMIND_LICENSE.txt
