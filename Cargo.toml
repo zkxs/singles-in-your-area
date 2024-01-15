@@ -13,7 +13,7 @@ chrono = "0.4"
 image = "0.24"
 imageproc = "0.23"
 rusttype = "0.9"
-maxminddb = "0.23"
+maxminddb = "0.24"
 lazy_static = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
