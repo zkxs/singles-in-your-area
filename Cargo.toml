@@ -11,9 +11,9 @@ repository = "https://github.com/zkxs/singles-in-your-area"
 tokio = { version = "1", features = ["full"] }
 warp = "0.3" # uses tokio 1.0
 chrono = "0.4"
-image = "0.24"
-imageproc = "0.23"
-rusttype = "0.9"
+image = "0.25"
+imageproc = "0.25"
+ab_glyph = "0.2"
 maxminddb = "0.24"
 lazy_static = "1"
 serde = { version = "1", features = ["derive"] }

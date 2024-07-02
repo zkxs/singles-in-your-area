@@ -1,8 +1,8 @@
+use ab_glyph::PxScale;
+use const_format::formatcp;
 use image::{DynamicImage, ImageFormat, Rgba};
 use image::io::Reader as ImageReader;
-use rusttype::Scale;
 use serde::Deserialize;
-use const_format::formatcp;
 
 /// simple struct that maps to config file entries
 #[derive(Deserialize)]
@@ -39,7 +39,7 @@ pub struct Advert {
     /// top of text
     pub text_y: i32,
     pub text_color: Rgba<u8>,
-    pub text_scale: Scale,
+    pub text_scale: PxScale,
     pub text_case: Case,
     pub output_format: ImageOutput,
     /// prefix for GeoIP location
@@ -63,7 +63,7 @@ impl Advert {
             text_x: i32::try_from(definition.text_x).expect(formatcp!("text_x must be less than {}", i32::MAX)),
             text_y: i32::try_from(definition.text_y).expect(formatcp!("text_y must be less than {}", i32::MAX)),
             text_color: Rgba(definition.text_color),
-            text_scale: Scale {
+            text_scale: PxScale {
                 x: definition.text_scale,
                 y: definition.text_scale,
             },

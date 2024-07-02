@@ -7,10 +7,10 @@ use std::io::Cursor;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
+use ab_glyph::FontVec;
 use chrono::{SecondsFormat, Utc};
 use imageproc::drawing::{draw_text_mut, text_size};
 use maxminddb::{geoip2, Reader as MaxMindReader};
-use rusttype::Font;
 use warp::Filter;
 use warp::http::{Response, StatusCode};
 
@@ -25,7 +25,7 @@ type GeoIp = MaxMindReader<Vec<u8>>;
 type Config = HashMap<String, Advert>;
 
 lazy_static! {
-    static ref FONT: Font<'static> = Font::try_from_vec(Vec::from(include_bytes!("resources/DejaVuSans-Bold.ttf") as &[u8])).unwrap();
+    static ref FONT: FontVec = FontVec::try_from_vec(Vec::from(include_bytes!("resources/DejaVuSans-Bold.ttf") as &[u8])).unwrap();
     static ref GEOIP: GeoIp = load_geoip_db();
 }
 
@@ -152,14 +152,15 @@ fn render_location_to_image(advert: &Advert, location: String) -> Result<Vec<u8>
     let text_scale = advert.text_scale;
 
     // handle the desired text case
-    let location = match advert.text_case {
+    let location: String = match advert.text_case {
         Case::Default => location,
         Case::Upper => location.to_uppercase()
     };
 
     // figure out how wide the text is
-    let text = format!("{}{}", advert.text_prefix, location);
-    let (text_width, _text_height) = text_size(text_scale, &*FONT, &text);
+    let text: String = format!("{}{}", advert.text_prefix, location);
+    let (text_width, _text_height): (u32, _) = text_size(text_scale, &*FONT, &text);
+    let text_width: i32 = text_width.try_into().unwrap();
 
     // calculate x coordinate if we're centering the text
     let x = match advert.text_align {
