@@ -3,6 +3,7 @@ name = "singles-in-your-area"
 version = "0.3.3"
 authors = ["Michael Ripley <zkxs00@gmail.com>"]
 edition = "2021"
+repository = "https://github.com/zkxs/singles-in-your-area"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
