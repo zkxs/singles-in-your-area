@@ -4,7 +4,7 @@ extern crate lazy_static;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 
 use ab_glyph::FontVec;
@@ -67,10 +67,7 @@ async fn main() {
     let routes = info.or(adverts);
 
     println!("[{}] Starting web server on port {}...", iso_string(), PORT);
-    tokio::join!(
-        warp::serve(routes.clone()).run((Ipv4Addr::UNSPECIFIED, PORT)),
-        warp::serve(routes).run((Ipv6Addr::UNSPECIFIED, PORT)),
-    );
+    warp::serve(routes).run((Ipv6Addr::UNSPECIFIED, PORT)).await;
 }
 
 /// helper function making it easier to pass state warp filters
