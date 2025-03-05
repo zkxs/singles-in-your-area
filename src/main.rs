@@ -4,7 +4,7 @@ extern crate lazy_static;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 
 use ab_glyph::FontVec;
@@ -20,6 +20,7 @@ mod advert;
 
 /// fallback fake location for when GeoIP lookup fails
 const DEFAULT_CITY: &str = "your area";
+const PORT: u16 = 3035;
 
 type GeoIp = MaxMindReader<Vec<u8>>;
 type Config = HashMap<String, Advert>;
@@ -37,8 +38,6 @@ fn load_geoip_db() -> GeoIp {
 #[tokio::main]
 async fn main() {
     println!("[{}] Initializing {} {}", iso_string(), env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-
-    let server_address: SocketAddr = ([0, 0, 0, 0], 3035).into();
 
     // load the config file and referenced images
     let config = fs::read_to_string("config.toml").expect("failed to open config.toml");
@@ -65,10 +64,11 @@ async fn main() {
     let routes = info
         .or(adverts);
 
-    println!("[{}] Starting web server on {}...", iso_string(), server_address);
-    warp::serve(routes)
-        .run(server_address)
-        .await;
+    println!("[{}] Starting web server on port {}...", iso_string(), PORT);
+    tokio::join!(
+        warp::serve(routes.clone()).run((Ipv4Addr::UNSPECIFIED, PORT)),
+        warp::serve(routes).run((Ipv6Addr::UNSPECIFIED, PORT)),
+    );
 }
 
 /// helper function making it easier to pass state warp filters
