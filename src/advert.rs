@@ -1,7 +1,6 @@
 use ab_glyph::PxScale;
 use const_format::formatcp;
-use image::{DynamicImage, ImageFormat, Rgba};
-use image::io::Reader as ImageReader;
+use image::{DynamicImage, ImageFormat, Rgba, ImageReader};
 use serde::Deserialize;
 
 /// simple struct that maps to config file entries
