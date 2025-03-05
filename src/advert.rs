@@ -1,6 +1,6 @@
 use ab_glyph::PxScale;
 use const_format::formatcp;
-use image::{DynamicImage, ImageFormat, Rgba, ImageReader};
+use image::{DynamicImage, ImageFormat, ImageReader, Rgba};
 use serde::Deserialize;
 
 /// simple struct that maps to config file entries
@@ -55,8 +55,10 @@ impl Advert {
 
         Advert {
             image,
-            image_width: i32::try_from(definition.image_width).expect(formatcp!("image_width must be less than {}", i32::MAX)),
-            image_height: i32::try_from(definition.image_height).expect(formatcp!("image_height must be less than {}", i32::MAX)),
+            image_width: i32::try_from(definition.image_width)
+                .expect(formatcp!("image_width must be less than {}", i32::MAX)),
+            image_height: i32::try_from(definition.image_height)
+                .expect(formatcp!("image_height must be less than {}", i32::MAX)),
             frames: i32::try_from(definition.frames).expect(formatcp!("frames must be less than {}", i32::MAX)),
             text_align: definition.text_align,
             text_x: i32::try_from(definition.text_x).expect(formatcp!("text_x must be less than {}", i32::MAX)),

@@ -11,8 +11,8 @@ use ab_glyph::FontVec;
 use chrono::{SecondsFormat, Utc};
 use imageproc::drawing::{draw_text_mut, text_size};
 use maxminddb::{geoip2, Reader as MaxMindReader};
-use warp::Filter;
 use warp::http::{Response, StatusCode};
+use warp::Filter;
 
 use crate::advert::*;
 
@@ -26,25 +26,28 @@ type GeoIp = MaxMindReader<Vec<u8>>;
 type Config = HashMap<String, Advert>;
 
 lazy_static! {
-    static ref FONT: FontVec = FontVec::try_from_vec(Vec::from(include_bytes!("resources/DejaVuSans-Bold.ttf") as &[u8])).unwrap();
+    static ref FONT: FontVec =
+        FontVec::try_from_vec(Vec::from(include_bytes!("resources/DejaVuSans-Bold.ttf") as &[u8])).unwrap();
     static ref GEOIP: GeoIp = load_geoip_db();
 }
 
 fn load_geoip_db() -> GeoIp {
-    maxminddb::Reader::open_readfile("GeoLite2-City.mmdb")
-        .expect("failed to load geoip database")
+    maxminddb::Reader::open_readfile("GeoLite2-City.mmdb").expect("failed to load geoip database")
 }
 
 #[tokio::main]
 async fn main() {
-    println!("[{}] Initializing {} {}", iso_string(), env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    println!(
+        "[{}] Initializing {} {}",
+        iso_string(),
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    );
 
     // load the config file and referenced images
     let config = fs::read_to_string("config.toml").expect("failed to open config.toml");
     let config: HashMap<String, AdvertDefinition> = toml::from_str(&config).expect("failed to deserialize config.toml");
-    let config: Config = config.into_iter()
-        .map(|(path, ad)| (path, Advert::open(ad)))
-        .collect();
+    let config: Config = config.into_iter().map(|(path, ad)| (path, Advert::open(ad))).collect();
     let config = Arc::new(config);
 
     println!("[{}] Done loading images", iso_string());
@@ -61,8 +64,7 @@ async fn main() {
         .and(warp::filters::addr::remote())
         .and_then(fake_advert_handler);
 
-    let routes = info
-        .or(adverts);
+    let routes = info.or(adverts);
 
     println!("[{}] Starting web server on port {}...", iso_string(), PORT);
     tokio::join!(
@@ -72,7 +74,7 @@ async fn main() {
 }
 
 /// helper function making it easier to pass state warp filters
-fn with_state<T: Clone + Send>(state: T) -> impl Filter<Extract=(T, ), Error=std::convert::Infallible> + Clone {
+fn with_state<T: Clone + Send>(state: T) -> impl Filter<Extract = (T,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || state.clone())
 }
 
@@ -82,10 +84,13 @@ fn iso_string() -> String {
 }
 
 /// handles a request to the /ad/<image_name> endpoint
-async fn fake_advert_handler(image_name: String, config: Arc<Config>, socket_addr: Option<SocketAddr>) -> Result<impl warp::Reply, warp::Rejection> {
+async fn fake_advert_handler(
+    image_name: String,
+    config: Arc<Config>,
+    socket_addr: Option<SocketAddr>,
+) -> Result<impl warp::Reply, warp::Rejection> {
     match (*config).get(&image_name) {
         Some(advert) => {
-
             // attempt to generate the image
             let image = socket_addr
                 .ok_or_else(|| "no remote address".to_string())
@@ -97,41 +102,37 @@ async fn fake_advert_handler(image_name: String, config: Arc<Config>, socket_add
             match image {
                 Ok(image) => {
                     // everything worked!
-                    Ok(
-                        Response::builder()
-                            .status(StatusCode::OK)
-                            .header("Content-Type", advert.output_format.mime_type())
-                            .body(image)
-                    )
+                    Ok(Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", advert.output_format.mime_type())
+                        .body(image))
                 }
                 Err(e) => {
                     // something went wrong with the the image render
                     eprintln!("[{}] {}", iso_string(), e);
-                    Ok(
-                        Response::builder()
-                            .status(StatusCode::INTERNAL_SERVER_ERROR)
-                            .header("Content-Type", "text/plain")
-                            .body(e.into())
-                    )
+                    Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .header("Content-Type", "text/plain")
+                        .body(e.into()))
                 }
             }
         }
         None => {
             // someone requested an image_name that isn't in our config file
             eprintln!("[{}] 404: {}", iso_string(), image_name);
-            Ok(
-                Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .header("Content-Type", "text/plain")
-                    .body("resource not found on server".into())
-            )
+            Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", "text/plain")
+                .body("resource not found on server".into()))
         }
     }
 }
 
 /// get an approximate city from an IP address, falling back to a default on failure
 fn get_city_from_ip(addr: IpAddr) -> String {
-    (*GEOIP).lookup(addr).ok()
+    (*GEOIP)
+        .lookup(addr)
+        .ok()
         .and_then(|city: geoip2::City| city.city)
         .and_then(|city| city.names)
         .and_then(|names| names.iter().next().map(|(_k, v)| v.to_owned()))
@@ -154,7 +155,7 @@ fn render_location_to_image(advert: &Advert, location: String) -> Result<Vec<u8>
     // handle the desired text case
     let location: String = match advert.text_case {
         Case::Default => location,
-        Case::Upper => location.to_uppercase()
+        Case::Upper => location.to_uppercase(),
     };
 
     // figure out how wide the text is
@@ -184,7 +185,8 @@ fn render_location_to_image(advert: &Advert, location: String) -> Result<Vec<u8>
 
     // encode the image
     let mut buffer: Vec<u8> = Vec::new();
-    image.write_to(&mut Cursor::new(&mut buffer), advert.output_format.format())
+    image
+        .write_to(&mut Cursor::new(&mut buffer), advert.output_format.format())
         .map_err(|e| format!("failed to encode output image: {:?}", e))?;
     Ok(buffer)
 }
