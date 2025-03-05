@@ -98,6 +98,14 @@ impl ImageOutput {
             ImageOutput::Png => "image/png",
         }
     }
+
+    /// Check if this image has alpha. All of our source images are Rgba8 pngs, so if we're encoding a jpeg we need to convert first.
+    pub fn has_alpha(&self) -> bool {
+        match &self {
+            ImageOutput::Jpeg => false,
+            ImageOutput::Png => true,
+        }
+    }
 }
 
 /// supported text alignment options
