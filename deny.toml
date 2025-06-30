@@ -72,6 +72,7 @@ feature-depth = 1
 ignore = [
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
+    { id = "RUSTSEC-2024-0436", reason = "paste - no longer maintained. Simple, stable macro library." },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
     #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
 ]
@@ -98,7 +99,8 @@ allow = [
     "MIT",
     "Zlib",
     # Weirder stuff
-    "MPL-2.0", # OSI and FSF approved. Needed by option-ext
+    "Apache-2.0 WITH LLVM-exception", # EXEMPTION from certain terms under certain conditions. Needed by image, imageproc.
+    "NCSA", # OSI and FSF approved. Needed by image, imageproc.
     "Unicode-3.0", # OSI but not FSF approved. Needed by unicode-ident.
 ]
 # The confidence threshold for detecting a license from license text.
@@ -176,6 +178,10 @@ allow = [
 deny = [
     #"ansi_term@0.11.0",
     #{ crate = "ansi_term@0.11.0", reason = "you can specify a reason it is banned" },
+    { crate = "openssl", reason = "I prefer rustls over openssl" },
+    { crate = "hyper-tls", reason = "I prefer rustls over openssl. This crate may use openssl on some platforms: use hyper-rustls instead." },
+    { crate = "native-tls-crate", reason = "I prefer rustls over openssl. This crate may use openssl on some platforms." },
+    { crate = "tokio-native-tls", reason = "I prefer rustls over openssl. This crate may use openssl on some platforms." },
     # Wrapper crates can optionally be specified to allow the crate when it
     # is a direct dependency of the otherwise banned crate
     #{ crate = "ansi_term@0.11.0", wrappers = ["this-crate-directly-depends-on-ansi_term"] },
@@ -208,6 +214,10 @@ deny = [
 skip = [
     #"ansi_term@0.11.0",
     #{ crate = "ansi_term@0.11.0", reason = "you can specify a reason why it can't be updated/removed" },
+    { crate = "bitflags@1", reason = "used by image, imageproc" },
+    { crate = "getrandom@0.2", reason="used by imageproc, warp" },
+    { crate = "http@0.2", reason="used by warp" },
+    { crate = "wasi@0.11", reason="used by imageproc, image, warp" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive
@@ -216,6 +226,7 @@ skip = [
 skip-tree = [
     #"ansi_term@0.11.0", # will be skipped along with _all_ of its direct and transitive dependencies
     #{ crate = "ansi_term@0.11.0", depth = 20 },
+    { crate = "windows-sys@0.52", reason = "old winapi bindings" },
 ]
 
 # This section is considered when running `cargo deny check sources`.
