@@ -4,6 +4,7 @@ version = "0.3.3"
 authors = ["Michael Ripley <zkxs00@gmail.com>"]
 edition = "2024"
 repository = "https://github.com/zkxs/singles-in-your-area"
+license = "AGPL-3.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

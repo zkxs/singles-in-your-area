@@ -1,3 +1,7 @@
+// This file is part of singles-in-your-area and is licenced under the GNU AGPL v3.0.
+// See LICENSE file for full text.
+// Copyright © 2021-2025 Michael Ripley
+
 use ab_glyph::PxScale;
 use const_format::formatcp;
 use image::{DynamicImage, ImageFormat, ImageReader, Rgba};
