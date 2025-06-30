@@ -1,0 +1,98 @@
+# This file is part of singles-in-your-area and is licenced under the GNU AGPL v3.0.
+# See LICENSE file for full text.
+# Copyright © 2025 Michael Ripley
+
+name: CI
+on:
+  pull_request:
+    branches: # run for pull requests that target master or prerelease
+      - master
+      - prerelease
+    paths-ignore: # ignore files that can't alter build output
+      - '**.md'
+      - .github/dependabot.yml
+      - .github/workflows/build.yml
+      - .github/workflows/publish.yml
+      - .gitignore
+      - docs/**
+      - LICENSE
+      - screenshots/**
+jobs:
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: "1.87.0"
+  cargo-fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Rust Toolchain
+        run: rustup update
+      - name: Install Cargo
+        run: rustup component add cargo
+      - name: Install Clippy
+        run: rustup component add rustfmt
+      - uses: actions/checkout@v4
+      - name: Format
+        run: cargo fmt --check
+  test:
+    strategy:
+      matrix:
+        target:
+          - runs-on: windows-latest
+            triple: x86_64-pc-windows-msvc
+            build-name: Windows
+            artifact-suffix: ''
+            suffix: .exe
+            path-separator: '\'
+            runner-can-execute: true
+          - runs-on: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+            build-name: Linux
+            artifact-suffix: -linux
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: true
+          - runs-on: macos-latest
+            triple: x86_64-apple-darwin
+            build-name: macOS x86
+            artifact-suffix: -mac-x86
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: true
+          - runs-on: macos-latest
+            triple: aarch64-apple-darwin
+            build-name: macOS ARM
+            artifact-suffix: -mac-arm
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: false
+      fail-fast: false
+    name: Test ${{ matrix.target.build-name }}
+    runs-on: ${{ matrix.target.runs-on }}
+    steps:
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target.triple }}
+      - name: Install Cargo
+        run: rustup component add cargo
+      - name: Install Clippy
+        run: rustup component add clippy
+      - name: git checkout
+        uses: actions/checkout@v4
+      - name: Setup workflow cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Check
+        run: cargo clippy --target ${{ matrix.target.triple }}
+      - name: Test
+        if: matrix.target.runner-can-execute
+        run: cargo test --target ${{ matrix.target.triple }}

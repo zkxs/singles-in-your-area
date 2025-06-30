@@ -1,0 +1,125 @@
+# This file is part of singles-in-your-area and is licenced under the GNU AGPL v3.0.
+# See LICENSE file for full text.
+# Copyright © 2025 Michael Ripley
+
+name: Build
+on:
+  push:
+    paths-ignore: # ignore files that can't alter build output
+      - '**.md'
+      - .github/dependabot.yml
+      - .github/workflows/ci.yml
+      - .github/workflows/publish.yml
+      - .gitignore
+      - docs/**
+      - LICENSE
+      - screenshots/**
+jobs:
+  cargo-deny:
+    # only run for pushes to tags or non-dependabot branches
+    if: startsWith(github.ref, 'refs/tags/') || (startsWith(github.ref, 'refs/heads/') && !startsWith(github.ref, 'refs/heads/dependabot/'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: "1.87.0"
+  cargo-fmt:
+    # only run for pushes to tags or non-dependabot branches
+    if: startsWith(github.ref, 'refs/tags/') || (startsWith(github.ref, 'refs/heads/') && !startsWith(github.ref, 'refs/heads/dependabot/'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Rust Toolchain
+        run: rustup update
+      - name: Install Cargo
+        run: rustup component add cargo
+      - name: Install Clippy
+        run: rustup component add rustfmt
+      - uses: actions/checkout@v4
+      - name: Format
+        run: cargo fmt --check
+  build:
+    # only run for pushes to tags or non-dependabot branches
+    if: startsWith(github.ref, 'refs/tags/') || (startsWith(github.ref, 'refs/heads/') && !startsWith(github.ref, 'refs/heads/dependabot/'))
+    strategy:
+      matrix:
+        target:
+          - runs-on: windows-latest
+            triple: x86_64-pc-windows-msvc
+            build-name: Windows
+            artifact-suffix: ''
+            suffix: .exe
+            path-separator: '\'
+            runner-can-execute: true
+          - runs-on: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+            build-name: Linux
+            artifact-suffix: -linux
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: true
+          - runs-on: macos-latest
+            triple: x86_64-apple-darwin
+            build-name: macOS x86
+            artifact-suffix: -mac-x86
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: true
+          - runs-on: macos-latest
+            triple: aarch64-apple-darwin
+            build-name: macOS ARM
+            artifact-suffix: -mac-arm
+            suffix: ''
+            path-separator: '/'
+            runner-can-execute: false
+      fail-fast: false
+    name: Build ${{ matrix.target.build-name }}
+    runs-on: ${{ matrix.target.runs-on }}
+    steps:
+      - name: Update Rust Toolchain
+        run: rustup update
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target.triple }}
+      - name: Install Cargo
+        run: rustup component add cargo
+      - name: Install Clippy
+        run: rustup component add clippy
+      - name: git checkout
+        uses: actions/checkout@v4
+      - name: Setup workflow cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Check
+        run: cargo clippy --target ${{ matrix.target.triple }}
+      - name: Test
+        if: matrix.target.runner-can-execute
+        run: cargo test --target ${{ matrix.target.triple }}
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target.triple }}
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: singles-in-your-area-${{ matrix.target.triple }}
+          path: ./target/${{ matrix.target.triple }}/release/singles-in-your-area${{ matrix.target.suffix }}
+          if-no-files-found: error
+      - name: Rename artifact for release # action-gh-release is incapable of renaming files, so I have to do it manually
+        if: startsWith(github.ref, 'refs/tags/') # only run for pushes to tags
+        run: |
+          cp "./target/${{ matrix.target.triple }}/release/singles-in-your-area${{ matrix.target.suffix }}" "${{ runner.temp }}/singles-in-your-area${{ matrix.target.artifact-suffix }}${{ matrix.target.suffix }}"
+          ls "${{ runner.temp }}"
+          file "${{ runner.temp }}${{ matrix.target.path-separator }}singles-in-your-area${{ matrix.target.artifact-suffix }}${{ matrix.target.suffix }}"
+        shell: bash
+      - name: Upload release artifact
+        uses: softprops/action-gh-release@v2.3.2
+        if: startsWith(github.ref, 'refs/tags/') # only run for pushes to tags
+        with:
+          draft: true
+          files: ${{ runner.temp }}${{ matrix.target.path-separator }}singles-in-your-area${{ matrix.target.artifact-suffix }}${{ matrix.target.suffix }}
+          fail_on_unmatched_files: true
