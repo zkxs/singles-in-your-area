@@ -10,9 +10,9 @@ use std::sync::Arc;
 use ab_glyph::FontVec;
 use chrono::{SecondsFormat, Utc};
 use imageproc::drawing::{draw_text_mut, text_size};
-use maxminddb::{geoip2, Reader as MaxMindReader};
-use warp::http::{Response, StatusCode};
+use maxminddb::{Reader as MaxMindReader, geoip2};
 use warp::Filter;
+use warp::http::{Response, StatusCode};
 
 use crate::advert::*;
 
