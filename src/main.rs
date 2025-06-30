@@ -93,7 +93,7 @@ async fn fake_advert_handler(
                 .ok_or_else(|| "no remote address".to_string())
                 .and_then(|socket_addr| {
                     render_location_to_image(advert, get_city_from_ip(socket_addr.ip()))
-                        .map_err(|e| format!("Error encoding image: {:?}", e))
+                        .map_err(|e| format!("Error encoding image: {e:?}"))
                 });
 
             match image {
@@ -191,6 +191,6 @@ fn render_location_to_image(advert: &Advert, location: String) -> Result<Vec<u8>
     } else {
         image.write_to(&mut Cursor::new(&mut buffer), advert.output_format.format())
     };
-    image_result.map_err(|e| format!("failed to encode output image: {:?}", e))?;
+    image_result.map_err(|e| format!("failed to encode output image: {e:?}"))?;
     Ok(buffer)
 }
