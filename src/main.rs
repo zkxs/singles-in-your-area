@@ -134,6 +134,7 @@ fn get_city_from_ip(addr: IpAddr) -> String {
     (*GEOIP)
         .lookup(addr)
         .ok()
+        .flatten()
         .and_then(|city: geoip2::City| city.city)
         .and_then(|city| city.names)
         .and_then(|names| names.iter().next().map(|(_k, v)| v.to_owned()))
