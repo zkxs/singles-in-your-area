@@ -18,5 +18,5 @@ ab_glyph = "0.2"
 maxminddb = "0.26"
 lazy_static = "1"
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+toml = "0.9"
 const_format = "^0.2"
