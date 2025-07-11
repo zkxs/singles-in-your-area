@@ -2,21 +2,18 @@
 // See LICENSE file for full text.
 // Copyright © 2021-2025 Michael Ripley
 
-#[macro_use]
-extern crate lazy_static;
-
+use ab_glyph::FontVec;
+use imageproc::drawing::{draw_text_mut, text_size};
+use maxminddb::{Reader as MaxMindReader, geoip2};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;
+use std::io::Write;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
-use std::sync::Arc;
-
-use ab_glyph::FontVec;
-use chrono::{SecondsFormat, Utc};
-use imageproc::drawing::{draw_text_mut, text_size};
-use maxminddb::{Reader as MaxMindReader, geoip2};
+use std::sync::LazyLock;
+use tokio::sync::Semaphore;
 use warp::Filter;
-use warp::http::{Response, StatusCode};
+use warp::http::{HeaderMap, Response, StatusCode, header};
 
 use crate::advert::*;
 
@@ -29,18 +26,29 @@ const PORT: u16 = 3035;
 type GeoIp = MaxMindReader<Vec<u8>>;
 type Config = HashMap<String, Advert>;
 
-lazy_static! {
-    static ref FONT: FontVec =
-        FontVec::try_from_vec(Vec::from(include_bytes!("resources/DejaVuSans-Bold.ttf") as &[u8]))
-            .expect("Unable to load font");
-    static ref GEOIP: GeoIp = load_geoip_db();
+static CONFIG: LazyLock<Config> = LazyLock::new(load_config);
+static RENDER_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(2));
+static PLAIN_TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
+static FONT: LazyLock<FontVec> = LazyLock::new(|| {
+    FontVec::try_from_vec(Vec::from(include_bytes!("resources/DejaVuSans-Bold.ttf") as &[u8]))
+        .expect("Unable to load font")
+});
+static GEOIP: LazyLock<GeoIp> = LazyLock::new(load_geoip_db);
+
+/// load the config file and referenced images
+fn load_config() -> Config {
+    let config = fs::read_to_string("config.toml").expect("failed to open config.toml");
+    let config: HashMap<String, AdvertDefinition> = toml::from_str(&config).expect("failed to deserialize config.toml");
+    let config: Config = config.into_iter().map(|(path, ad)| (path, Advert::open(ad))).collect();
+    config
 }
 
+/// open the GeoIP DB from disk
 fn load_geoip_db() -> GeoIp {
     maxminddb::Reader::open_readfile("GeoLite2-City.mmdb").expect("failed to load geoip database")
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     println!(
         "[{}] Initializing {} {}",
@@ -49,102 +57,182 @@ async fn main() {
         env!("CARGO_PKG_VERSION")
     );
 
-    // load the config file and referenced images
-    let config = fs::read_to_string("config.toml").expect("failed to open config.toml");
-    let config: HashMap<String, AdvertDefinition> = toml::from_str(&config).expect("failed to deserialize config.toml");
-    let config: Config = config.into_iter().map(|(path, ad)| (path, Advert::open(ad))).collect();
-    let config = Arc::new(config);
-
     println!("[{}] Done loading images", iso_string());
 
     // simple version endpoint at web root
-    let info = warp::path::end()
+    let root = warp::path::end()
         .and(warp::get())
         .map(|| format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")));
+
+    let ip = warp::path("ip")
+        .and(warp::get())
+        .and(warp::filters::addr::remote())
+        .map(|addr: Option<SocketAddr>| {
+            if let Some(addr) = addr {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, PLAIN_TEXT_CONTENT_TYPE)
+                    .body(format!("{}", addr.ip()))
+            } else {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header(header::CONTENT_TYPE, PLAIN_TEXT_CONTENT_TYPE)
+                    .body("no ip address".to_string())
+            }
+        });
+
+    let info = warp::path("info")
+        .and(warp::get())
+        .and(warp::filters::addr::remote())
+        .and(warp::filters::header::headers_cloned())
+        .map(info_handler);
 
     // the advert endpoint, hosted at /ads/<image_name>
     let adverts = warp::path!("ads" / String)
         .and(warp::get())
-        .and(with_state(config.clone()))
         .and(warp::filters::addr::remote())
-        .and_then(fake_advert_handler);
+        .then(fake_advert_handler);
 
-    let routes = info.or(adverts);
+    let routes = root.or(ip).or(info).or(adverts);
 
     println!("[{}] Starting web server on port {}...", iso_string(), PORT);
     warp::serve(routes).run((Ipv6Addr::UNSPECIFIED, PORT)).await;
 }
 
-/// helper function making it easier to pass state warp filters
-fn with_state<T: Clone + Send>(state: T) -> impl Filter<Extract = (T,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || state.clone())
-}
-
 /// current time as an ISO-8601 string
 fn iso_string() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+    format!("{:.3}", jiff::Timestamp::now())
 }
 
 /// handles a request to the /ad/<image_name> endpoint
-async fn fake_advert_handler(
-    image_name: String,
-    config: Arc<Config>,
-    socket_addr: Option<SocketAddr>,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    match (*config).get(&image_name) {
+async fn fake_advert_handler(image_name: String, socket_addr: Option<SocketAddr>) -> impl warp::Reply {
+    match CONFIG.get(&image_name) {
         Some(advert) => {
             // attempt to generate the image
-            let image = socket_addr
-                .ok_or_else(|| "no remote address".to_string())
-                .and_then(|socket_addr| {
-                    render_location_to_image(advert, get_city_from_ip(socket_addr.ip()))
-                        .map_err(|e| format!("Error encoding image: {e:?}"))
-                });
+            let image = if let Some(socket_addr) = socket_addr {
+                render_location_to_image(advert, get_city_from_ip(socket_addr.ip()))
+                    .await
+                    .map_err(|e| format!("Error encoding image: {e:?}"))
+            } else {
+                Err("no remote address".to_string())
+            };
 
             match image {
                 Ok(image) => {
                     // everything worked!
-                    Ok(Response::builder()
+                    Response::builder()
                         .status(StatusCode::OK)
-                        .header("Content-Type", advert.output_format.mime_type())
-                        .body(image))
+                        .header(header::CONTENT_TYPE, advert.output_format.mime_type())
+                        .body(image)
                 }
                 Err(e) => {
-                    // something went wrong with the the image render
+                    // something went wrong with the image render
                     eprintln!("[{}] {}", iso_string(), e);
-                    Ok(Response::builder()
+                    Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .header("Content-Type", "text/plain")
-                        .body(e.into()))
+                        .header(header::CONTENT_TYPE, PLAIN_TEXT_CONTENT_TYPE)
+                        .body(e.into())
                 }
             }
         }
         None => {
             // someone requested an image_name that isn't in our config file
             eprintln!("[{}] 404: {}", iso_string(), image_name);
-            Ok(Response::builder()
+            Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .header("Content-Type", "text/plain")
-                .body("resource not found on server".into()))
+                .header(header::CONTENT_TYPE, PLAIN_TEXT_CONTENT_TYPE)
+                .body("resource not found on server".into())
         }
     }
 }
 
+fn info_handler(socket_addr: Option<SocketAddr>, headers: HeaderMap) -> impl warp::Reply {
+    let mut buf = Vec::new();
+    let mut last_header_name = None;
+    for (name, value) in headers.into_iter() {
+        let name = if let Some(name) = name {
+            last_header_name = Some(name);
+            // we set this in the previous line: the unwrap cannot fail
+            #[allow(clippy::unwrap_used)]
+            last_header_name.as_ref().unwrap()
+        } else {
+            last_header_name.as_ref().expect("first header name was unset")
+        };
+        write!(buf, "{name}: ").expect("vec write failed");
+        buf.extend_from_slice(value.as_bytes());
+        buf.push(b'\n');
+    }
+    if let Some(socket_addr) = socket_addr {
+        // write IP
+        let ip = socket_addr.ip();
+        writeln!(buf, "ip: {ip}").expect("vec write failed");
+
+        // write ISP
+        let isp = GEOIP.lookup::<geoip2::Isp>(ip).ok().flatten().and_then(|isp| isp.isp);
+        if let Some(isp) = isp {
+            writeln!(buf, "isp: {isp}").expect("vec write failed");
+        }
+
+        // write city
+        let city = GEOIP
+            .lookup::<geoip2::City>(ip)
+            .ok()
+            .flatten()
+            .and_then(|city| city.city)
+            .and_then(|city| city.names)
+            .and_then(|names| names.first_key_value().map(|(_city, name)| *name));
+        if let Some(city) = city {
+            writeln!(buf, "city: {city}").expect("vec write failed");
+        }
+
+        // write country
+        let country = GEOIP
+            .lookup::<geoip2::Country>(ip)
+            .ok()
+            .flatten()
+            .and_then(|country| country.country)
+            .and_then(|country| country.names)
+            .and_then(|names| names.first_key_value().map(|(_city, name)| *name));
+        if let Some(country) = country {
+            writeln!(buf, "country: {country}").expect("vec write failed");
+        }
+    }
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, PLAIN_TEXT_CONTENT_TYPE)
+        .body(buf)
+}
+
 /// get an approximate city from an IP address, falling back to a default on failure
 fn get_city_from_ip(addr: IpAddr) -> String {
-    (*GEOIP)
-        .lookup(addr)
+    GEOIP
+        .lookup::<geoip2::City>(addr)
         .ok()
         .flatten()
-        .and_then(|city: geoip2::City| city.city)
+        .and_then(|city| city.city)
         .and_then(|city| city.names)
-        .and_then(|names| names.iter().next().map(|(_k, v)| v.to_owned()))
-        .map(|v| v.to_owned())
+        .and_then(|names| names.first_key_value().map(|(_city, name)| (*name).to_owned()))
         .unwrap_or_else(|| DEFAULT_CITY.to_owned())
 }
 
-/// render some custom text over an image, where that custom text contains a location (e.g. "singles near New York City")
-fn render_location_to_image(advert: &Advert, location: String) -> Result<Vec<u8>, String> {
+/// Render some custom text over an image, where that custom text contains a location (e.g. "singles near New York City").
+///
+/// To reduce potential DoS effect, the number of concurrent running render jobs is limited to 2.
+async fn render_location_to_image(advert: &'static Advert, location: String) -> Result<Vec<u8>, String> {
+    let render_permit = RENDER_SEMAPHORE
+        .acquire()
+        .await
+        .expect("render semaphore has been closed!");
+    // Even though renders are fast, they're not fast in the context of CPU clock speeds. Best to put it on a blocking task thread.
+    let result = tokio::task::spawn_blocking(move || render_location_to_image_sync(advert, location))
+        .await
+        .unwrap_or_else(|_| Err("image render task failed to complete".to_string()));
+    drop(render_permit); // be very explicit about where the permit is dropped
+    result
+}
+
+/// actual synchronous implementation of [`render_location_to_image`]
+fn render_location_to_image_sync(advert: &Advert, location: String) -> Result<Vec<u8>, String> {
     // we need a fresh copy of the image to render to
     let mut image = advert.image.clone();
 

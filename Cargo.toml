@@ -12,17 +12,16 @@ strip = false # required for `cargo-bloat`
 debug = true # required for `cargo flamegraph`, and makes `cargo-bloat` output significantly better
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
 warp = "0.3" # uses tokio 1.0
-chrono = "0.4"
 image = "0.25"
 imageproc = "0.25"
 ab_glyph = "0.2"
 maxminddb = "0.26"
-lazy_static = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.9"
-const_format = "^0.2"
+const_format = "0.2"
+jiff = { version = "0.2", default-features = false, features = ["std"] }
 
 [lints.clippy]
 dbg_macro = "deny"

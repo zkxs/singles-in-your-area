@@ -217,6 +217,11 @@ skip = [
     { crate = "bitflags@1", reason = "used by image, imageproc" },
     { crate = "getrandom@0.2", reason="used by imageproc, warp" },
     { crate = "http@0.2", reason="used by warp" },
+    { crate = "serde_spanned@0.6", reason="used by toml 0.8" },
+    { crate = "toml_datetime@0.7", reason="used by toml 0.8" },
+    { crate = "toml@0.8", reason="migration ongoing" },
+    { crate = "thiserror@1", reason="big migration ongoing" },
+    { crate = "thiserror-impl@1", reason="big migration ongoing" },
     { crate = "wasi@0.11", reason="used by imageproc, image, warp" },
 ]
 # Similarly to `skip` allows you to skip certain crates during duplicate
