@@ -6,7 +6,10 @@ edition = "2024"
 repository = "https://github.com/zkxs/singles-in-your-area"
 license = "AGPL-3.0-or-later"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release-optimized-debug]
+inherits = "release"
+strip = false # required for `cargo-bloat`
+debug = true # required for `cargo flamegraph`, and makes `cargo-bloat` output significantly better
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -20,3 +23,17 @@ lazy_static = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 const_format = "^0.2"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unused_async = "warn"
+unused_self = "warn"
+unwrap_used = "deny"
+used_underscore_binding = "warn"
+used_underscore_items = "warn"
+string_slice = "deny"
+cast_possible_truncation = "warn"
+cast_precision_loss = "warn"
+fn_to_numeric_cast_any = "warn"
+ptr_as_ptr = "warn"
