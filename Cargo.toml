@@ -13,7 +13,7 @@ debug = true # required for `cargo flamegraph`, and makes `cargo-bloat` output s
 
 [dependencies]
 tokio = { version = "1", features = ["macros", "rt", "time"] }
-warp = "0.3" # uses tokio 1.0
+warp = "0.4" # uses tokio 1.0
 image = "0.25"
 imageproc = "0.25"
 ab_glyph = "0.2"
